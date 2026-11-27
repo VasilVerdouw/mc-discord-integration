@@ -138,7 +138,11 @@ public class DiscordBot {
             boolean shouldHaveRole = onlineMembers.contains(member);
             boolean hasRole = member.getRoles().contains(onlineRole);
             if (shouldHaveRole != hasRole) {
-                changes.add(guildData.setOnlineRole(member, onlineRole, shouldHaveRole));
+                try {
+                    changes.add(guildData.setOnlineRole(member, onlineRole, shouldHaveRole));
+                } catch (RuntimeException e) {
+                    LOGGER.warn("Could not submit Online role update for Discord member {}", member.getId(), e);
+                }
             }
         }
         CompletableFuture.allOf(changes.toArray(CompletableFuture<?>[]::new)).join();

@@ -10,6 +10,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import nl.vasilverdouw.mcdiscord.discord.DiscordBot;
 import nl.vasilverdouw.mcdiscord.minecraft.OnlinePlayers;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ public class McDiscordMod {
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
+        NeoForge.EVENT_BUS.addListener(this::onServerTick);
         NeoForge.EVENT_BUS.addListener(this::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLeave);
     }
@@ -37,15 +39,23 @@ public class McDiscordMod {
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("refresh")
                         .executes(context -> {
-                            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+                            discordBot.updatePlayersOnline(context.getSource().getServer().getPlayerList().getPlayers());
                             return 1;
                         })));
     }
 
     private void onServerStarted(ServerStartedEvent event) {
         LOGGER.info("McDiscord: Minecraft server started!");
+        discordBot.updatePlayersOnline(event.getServer().getPlayerList().getPlayers());
         discordBot.start();
-        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+    }
+
+    private void onServerTick(ServerTickEvent.Post event) {
+        var server = event.getServer();
+        if (server.getTickCount() % (30 * 20) == 0) {
+            onlinePlayers.refresh(server);
+            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+        }
     }
 
     private void onServerStopping(ServerStoppingEvent event) {

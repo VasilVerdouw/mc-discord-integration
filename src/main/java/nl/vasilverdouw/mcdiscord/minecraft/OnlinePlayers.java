@@ -22,6 +22,10 @@ public class OnlinePlayers {
             return;
         }
 
+        refresh(server);
+    }
+
+    public void refresh(MinecraftServer server) {
         onlinePlayers = new ArrayList<>(server.getPlayerList().getPlayers());
     }
 
