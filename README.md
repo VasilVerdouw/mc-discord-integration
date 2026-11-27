@@ -1,25 +1,32 @@
+# McDiscord
 
-Installation information
-=======
+A server-side mod for Minecraft 1.21.1 (NeoForge, Java 21) that shows who is playing on your server in Discord.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+- Updates the bot's activity with the online player count and player names.
+- Gives matching Discord members an `Online` role while they are playing and removes it when they leave.
+- Updates automatically when players join or leave.
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## Setup
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+1. Install the mod JAR in your NeoForge server's `mods` folder. Players do not need to install it.
+2. Create a Discord bot in the Discord Developer Portal, enable **Server Members Intent**, and invite it to your Discord server with **Manage Roles** permission.
+3. Place the bot's role above the `Online` role in your Discord role list. The mod creates `Online` if it does not exist.
+4. For each player, create a Discord role named exactly after their Minecraft username and assign it to their Discord account. Matching is case-insensitive and uses these roles, rather than Discord usernames or nicknames.
+5. Set the environment variables below in the environment that launches your Minecraft server, then start or restart it.
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+| Variable | Description |
+| --- | --- |
+| `DISCORD_BOT_TOKEN` | Required. Your bot's token; keep it private. |
+| `DISCORD_GUILD_ID` | Your Discord server ID. Optional; if omitted, the bot uses the first server it finds. Set this when the bot belongs to multiple servers. |
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+Configuration uses environment variables; there is no mod configuration file. To copy a Discord server ID, enable Developer Mode in Discord and right-click the server.
+
+## Commands and troubleshooting
+
+Use `/mcdiscord refresh` to update the bot's activity and roles manually (requires operator permission level 2). If the initial update happens before the bot connects, run this command once it is connected.
+
+If roles do not update, check the server logs, the bot's permissions and role position, Server Members Intent, and the player's username role. The `Online` role is managed for all members of the selected Discord server, so use it only for this integration.
+
+## Building from source
+
+With Java 21 installed, run `./gradlew build` (`.\gradlew.bat build` on Windows). Build output is written to `build/libs/`.
