@@ -1,11 +1,12 @@
 package nl.vasilverdouw.mcdiscord;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.server.MinecraftServer;
+import net.minecraft.commands.Commands;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -24,10 +25,21 @@ public class McDiscordMod {
     public McDiscordMod() {
         LOGGER.info("McDiscord is initializing!");
 
+        NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(this::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLeave);
+    }
+
+    private void onRegisterCommands(RegisterCommandsEvent event) {
+        event.getDispatcher().register(Commands.literal("mcdiscord")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("refresh")
+                        .executes(context -> {
+                            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+                            return 1;
+                        })));
     }
 
     private void onServerStarted(ServerStartedEvent event) {
