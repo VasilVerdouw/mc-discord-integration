@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class GuildData {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -44,7 +45,7 @@ public class GuildData {
     }
 
     // This method returns a Role object called "Online" from the guild. If it doesn't exist, it creates it.
-    public Role ensureOnlineRole()
+    public Role ensureOnlineRole(boolean createIfMissing)
     {
         Guild guild = getGuild();
         if (guild == null) {
@@ -57,7 +58,7 @@ public class GuildData {
                 .findFirst()
                 .orElse(null);
 
-        if (onlineRole == null) {
+        if (onlineRole == null && createIfMissing) {
             LOGGER.info("Online role does not exist. Creating it...");
             onlineRole = guild.createRole()
                     .setName("Online")
@@ -70,41 +71,25 @@ public class GuildData {
         return onlineRole;
     }
 
-    public Member findDiscordUserByMinecraftName(String name) {
-        for (Member member : getGuildMembers()) {
-            for (String roleName : member.getRoles().stream().map(Role::getName).toList()) {
-                if (roleName.equalsIgnoreCase(name)) {
-                    return member;
+    public Member findDiscordUserByMinecraftName(String name, Role onlineRole) {
+        Member match = null;
+        for (Member member : guildMembers) {
+            boolean matches = member.getRoles().stream().anyMatch(role ->
+                    !role.equals(onlineRole) && role.getName().equalsIgnoreCase(name));
+            if (matches) {
+                if (match != null) {
+                    LOGGER.warn("Multiple Discord members match Minecraft player {}", name);
+                    return null;
                 }
+                match = member;
             }
         }
-        return null;
+        return match;
     }
 
-    public void giveRoleToMember(Member member, Role role) {
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot give role to member.");
-            return;
-        }
-
-        guild.addRoleToMember(member, role).queue(
-                success -> {},
-                error -> LOGGER.error("Failed to give role {} to member {}: {}", role.getName(), member.getEffectiveName(), error.getMessage())
-        );
-    }
-
-    public void removeRoleFromMember(Member member, Role role) {
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot remove role from member.");
-            return;
-        }
-
-        guild.removeRoleFromMember(member, role).queue(
-                success -> {},
-                error -> LOGGER.error("Failed to remove role {} from member {}: {}", role.getName(), member.getEffectiveName(), error.getMessage())
-        );
+    public CompletableFuture<Void> setOnlineRole(Member member, Role role, boolean online) {
+        return (online ? guild.addRoleToMember(member, role) : guild.removeRoleFromMember(member, role))
+                .submit();
     }
 
     private Guild getGuild() {
