@@ -12,6 +12,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import nl.vasilverdouw.mcdiscord.config.NeoForgeConfig;
 import nl.vasilverdouw.mcdiscord.config.IConfig;
 import nl.vasilverdouw.mcdiscord.discord.DiscordBot;
@@ -40,6 +41,7 @@ public class McDiscordMod {
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(this::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLeave);
+        NeoForge.EVENT_BUS.addListener(this::onGameTick);
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
@@ -75,6 +77,14 @@ public class McDiscordMod {
         LOGGER.info("McDiscord: Player left the server: " + getPlayerName(player));
         onlinePlayers.playerLoggedOut(player);
         discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
+    }
+
+    private void onGameTick(ServerTickEvent.Post event) {
+        var server = event.getServer();
+        if (server.getTickCount() % (20 * 60 * 5) == 0) { // Every 5 minutes
+            onlinePlayers.updateOnlinePlayers(server);
+            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
+        }
     }
 
     private String getPlayerName(Player player) {
