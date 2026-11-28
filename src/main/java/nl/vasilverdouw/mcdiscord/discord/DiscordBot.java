@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.ChunkingFilter;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.minecraft.server.level.ServerPlayer;
+import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -19,12 +20,17 @@ import java.util.List;
 public class DiscordBot {
 
     private static final Logger LOGGER = LogUtils.getLogger();
+    private final IConfig config;
     private GuildData guildData;
 
     private JDA jda;
 
+    public DiscordBot(IConfig config) {
+        this.config = config;
+    }
+
     public void start() {
-        String token = System.getenv("DISCORD_BOT_TOKEN");
+        String token = config.getConfigValue("DISCORD_BOT_TOKEN");
 
         if (token == null || token.isBlank()) {
             LOGGER.error("Discord bot token is missing.");
@@ -46,7 +52,7 @@ public class DiscordBot {
                         }
                     })
                     .build();
-            guildData = new GuildData(jda);
+            guildData = new GuildData(jda, config);
         } catch (Exception e) {
             LOGGER.error("Failed to start Discord bot", e);
         }

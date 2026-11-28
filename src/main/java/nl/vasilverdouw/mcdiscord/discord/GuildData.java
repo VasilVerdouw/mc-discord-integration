@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
+import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -14,14 +15,16 @@ public class GuildData {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final JDA jda;
+    private final IConfig config;
     private final String guildId;
 
     private List<Member> guildMembers;
     private Guild guild;
 
-    public GuildData(JDA jda) {
+    public GuildData(JDA jda, IConfig config) {
         this.jda = jda;
-        guildId = System.getenv("DISCORD_GUILD_ID");
+        this.config = config;
+        guildId = config.getConfigValue("DISCORD_GUILD_ID");
     }
 
     public List<Member> getGuildMembers() {

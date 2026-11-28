@@ -10,6 +10,8 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import nl.vasilverdouw.mcdiscord.config.EnvVariableConfig;
+import nl.vasilverdouw.mcdiscord.config.IConfig;
 import nl.vasilverdouw.mcdiscord.discord.DiscordBot;
 import nl.vasilverdouw.mcdiscord.minecraft.OnlinePlayers;
 import org.slf4j.Logger;
@@ -17,7 +19,8 @@ import org.slf4j.Logger;
 @Mod(value = McDiscordMod.MOD_ID, dist = Dist.DEDICATED_SERVER)
 public class McDiscordMod {
 
-    private final DiscordBot discordBot = new DiscordBot();
+    public final IConfig config = new EnvVariableConfig();
+    private final DiscordBot discordBot = new DiscordBot(config);
     private final OnlinePlayers onlinePlayers = new OnlinePlayers();
     public static final String MOD_ID = "mcdiscord";
     public static final Logger LOGGER = LogUtils.getLogger();
