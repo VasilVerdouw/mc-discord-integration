@@ -10,8 +10,8 @@ import java.util.List;
 public class OnlinePlayers {
     private List<ServerPlayer> onlinePlayers = new ArrayList<>();
 
-    public List<ServerPlayer> getOnlinePlayers() {
-        return onlinePlayers;
+    public List<String> getOnlinePlayerNames() {
+        return onlinePlayers.stream().map(player -> player.getName().getString()).toList();
     }
 
     // Get all online players from the just logged in player's minecraft server.

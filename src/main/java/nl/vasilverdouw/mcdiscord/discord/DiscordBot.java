@@ -3,33 +3,42 @@ package nl.vasilverdouw.mcdiscord.discord;
 import com.mojang.logging.LogUtils;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.Role;
-import net.dv8tion.jda.api.events.session.ReadyEvent;
+import net.dv8tion.jda.api.events.StatusChangeEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.ChunkingFilter;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
-import net.minecraft.server.level.ServerPlayer;
 import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class DiscordBot {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private final IConfig config;
+    private final ExecutorService worker = Executors.newSingleThreadExecutor(
+            task -> new Thread(task, "McDiscord sync"));
+
+    // Only the worker accesses JDA and the guild synchronization state.
+    private JDA jda;
     private GuildData guildData;
 
-    private JDA jda;
+    // Guarded by this object's monitor. No Discord work runs with this lock held.
+    private List<String> latestPlayers = List.of();
+    private boolean syncQueued;
 
     public DiscordBot(IConfig config) {
         this.config = config;
     }
 
     public void start() {
+        worker.execute(this::connect);
+    }
+
+    private void connect() {
         String token = config.getBotToken();
 
         if (token == null || token.isBlank()) {
@@ -44,11 +53,11 @@ public class DiscordBot {
                     .setChunkingFilter(ChunkingFilter.ALL)
                     .addEventListeners(new ListenerAdapter() {
                         @Override
-                        public void onReady(ReadyEvent event) {
-                            LOGGER.info(
-                                    "Discord bot connected as {}",
-                                    event.getJDA().getSelfUser().getName()
-                            );
+                        public void onStatusChange(StatusChangeEvent event) {
+                            if (event.getNewStatus() == JDA.Status.CONNECTED) {
+                                LOGGER.info("Discord bot connected as {}", event.getJDA().getSelfUser().getName());
+                                queueSync();
+                            }
                         }
                     })
                     .build();
@@ -58,68 +67,64 @@ public class DiscordBot {
         }
     }
 
-    public void stop() {
-        if (jda != null) {
-            showOnlinePlayersInActivity(new ArrayList<>());
-            giveOnlinePlayersRole(new ArrayList<>());
-
-
-            jda.shutdown();
-            jda = null;
-
-            LOGGER.info("Discord bot shutting down.");
+    public synchronized void stop() {
+        if (!worker.isShutdown()) {
+            worker.execute(this::disconnect);
+            worker.shutdown();
         }
     }
 
-    public void updatePlayersOnline(List<ServerPlayer> onlinePlayers) {
-        if (jda == null) {
-            LOGGER.warn("Discord bot is not running. Cannot update online players.");
+    private void disconnect() {
+        if (jda != null) {
+            try {
+                if (jda.getStatus() == JDA.Status.CONNECTED) {
+                    sync(List.of());
+                }
+            } finally {
+                jda.shutdown();
+                LOGGER.info("Discord bot shutting down.");
+            }
+        }
+    }
+
+    public synchronized void updatePlayersOnline(List<String> players) {
+        latestPlayers = List.copyOf(players);
+        queueSync();
+    }
+
+    private synchronized void queueSync() {
+        if (syncQueued || worker.isShutdown()) {
             return;
         }
-
-        showOnlinePlayersInActivity(onlinePlayers);
-
-        giveOnlinePlayersRole(onlinePlayers);
+        syncQueued = true;
+        worker.execute(() -> {
+            List<String> players = takeSnapshot();
+            if (!worker.isShutdown() && jda != null && jda.getStatus() == JDA.Status.CONNECTED) {
+                sync(players);
+            }
+        });
     }
 
-    private void showOnlinePlayersInActivity(List<ServerPlayer> onlinePlayers) {
+    private synchronized List<String> takeSnapshot() {
+        syncQueued = false;
+        return latestPlayers;
+    }
+
+    private void sync(List<String> onlinePlayers) {
+        try {
+            showOnlinePlayersInActivity(onlinePlayers);
+            guildData.syncOnlineRole(onlinePlayers);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Failed to sync online players to Discord", e);
+        }
+    }
+
+    private void showOnlinePlayersInActivity(List<String> onlinePlayers) {
         StringBuilder playerList = new StringBuilder("Online Players: " + onlinePlayers.size() + "\n\n");
-        for (ServerPlayer player : onlinePlayers) {
-            playerList.append("- ").append(player.getName().getString()).append("\n");
+        for (String player : onlinePlayers) {
+            playerList.append("- ").append(player).append("\n");
         }
 
         jda.getPresence().setActivity(net.dv8tion.jda.api.entities.Activity.playing(playerList.toString()));
-    }
-
-    private void giveOnlinePlayersRole(List<ServerPlayer> onlinePlayers) {
-        Role onlineRole = guildData.ensureOnlineRole();
-        if (onlineRole == null) {
-            LOGGER.warn("Online role could not be ensured. Cannot give online players the role.");
-            return;
-        }
-
-        guildData.updateGuildMembers();
-
-        // Create a list of Discord members that correspond to the online Minecraft players
-        List<Member> onlineMembers = new ArrayList<>();
-        for (ServerPlayer player : onlinePlayers) {
-            String playerName = player.getName().getString();
-            Member member = guildData.findDiscordUserByMinecraftName(playerName);
-            if (member != null) {
-                onlineMembers.add(member);
-            } else {
-                LOGGER.warn("No Discord user found for Minecraft player: " + playerName);
-            }
-        }
-
-        // For each member in the guild, if they are in the onlineMembers list, give them the Online role.
-        // If they are not in the list, remove the Online role from them.
-        for (Member member : guildData.getGuildMembers()) {
-            if (onlineMembers.contains(member)) {
-                guildData.giveRoleToMember(member, onlineRole);
-            } else {
-                guildData.removeRoleFromMember(member, onlineRole);
-            }
-        }
     }
 }

@@ -25,7 +25,7 @@ Configuration uses NeoForge's `ModConfigSpec` through the mod's `IConfig` interf
 
 ## Commands and troubleshooting
 
-Use `/mcdiscord refresh` to update the bot's activity and roles manually (requires operator permission level 2). If the initial update happens before the bot connects, run this command once it is connected.
+Use `/mcdiscord refresh` to update the bot's activity and roles manually (requires operator permission level 2). The mod syncs automatically once the bot connects and runs Discord updates in the background.
 
 If roles do not update, check the server logs, the bot's permissions and role position, Server Members Intent, and the player's username role. The `Online` role is managed for all members of the selected Discord server, so use it only for this integration.
 

@@ -9,50 +9,71 @@ import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class GuildData {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final long ROLE_REQUEST_TIMEOUT_SECONDS = 10;
 
     private final JDA jda;
-    private final String guildId;
+    private String guildId;
 
-    private List<Member> guildMembers;
-    private Guild guild;
+    private Role previousOnlineRole;
+    private Set<Long> previousOnlineMembers = Set.of();
 
     public GuildData(JDA jda, IConfig config) {
         this.jda = jda;
         guildId = config.getGuildId();
     }
 
-    public List<Member> getGuildMembers() {
-        return guildMembers;
-    }
-
-    public void updateGuildMembers() {
-        if (jda == null) {
-            LOGGER.warn("Discord bot is not running. Cannot update guild members.");
+    public void syncOnlineRole(List<String> onlinePlayers) {
+        Guild guild = getGuild();
+        if (guild == null) {
+            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot sync online roles.");
             return;
         }
 
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot update guild members.");
-            return;
+        Role onlineRole = ensureOnlineRole(guild);
+        List<Member> members = guild.getMembers();
+        Set<Long> onlineMemberIds = new HashSet<>();
+        for (String playerName : onlinePlayers) {
+            Member member = findDiscordUserByMinecraftName(playerName, members);
+            if (member != null) {
+                onlineMemberIds.add(member.getIdLong());
+            } else {
+                LOGGER.warn("No Discord user found for Minecraft player: " + playerName);
+            }
         }
 
-        guildMembers = new ArrayList<>(guild.loadMembers().get());
+        List<CompletableFuture<Void>> updates = new ArrayList<>();
+        for (Member member : members) {
+            long id = member.getIdLong();
+            boolean shouldHaveRole = onlineMemberIds.contains(id);
+            // Gateway role events can arrive after the REST response. Reassert a change in
+            // desired state even if the cache still shows the state before the last update.
+            boolean changed = onlineRole.equals(previousOnlineRole)
+                    && (previousOnlineMembers.contains(id) != shouldHaveRole);
+            if (changed || member.getRoles().contains(onlineRole) != shouldHaveRole) {
+                var action = shouldHaveRole ? guild.addRoleToMember(member, onlineRole)
+                        : guild.removeRoleFromMember(member, onlineRole);
+                updates.add(action.timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                        .submit().exceptionally(error -> {
+                            LOGGER.warn("Failed to sync Online role for Discord member {}", id, error);
+                            return null;
+                        }));
+            }
+        }
+        // Wait on the Discord worker so a later snapshot cannot overtake these role changes.
+        CompletableFuture.allOf(updates.toArray(CompletableFuture<?>[]::new)).join();
+        previousOnlineRole = onlineRole;
+        previousOnlineMembers = onlineMemberIds;
     }
 
-    // This method returns a Role object called "Online" from the guild. If it doesn't exist, it creates it.
-    public Role ensureOnlineRole()
-    {
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot ensure Online role.");
-            return null;
-        }
-
+    private Role ensureOnlineRole(Guild guild) {
         Role onlineRole = guild.getRoles().stream()
                 .filter(role -> role.getName().equalsIgnoreCase("Online"))
                 .findFirst()
@@ -64,6 +85,7 @@ public class GuildData {
                     .setName("Online")
                     .setMentionable(true)
                     .setColor(0x00ff3c)
+                    .timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .complete();
             LOGGER.info("Online role created.");
         }
@@ -71,8 +93,8 @@ public class GuildData {
         return onlineRole;
     }
 
-    public Member findDiscordUserByMinecraftName(String name) {
-        for (Member member : getGuildMembers()) {
+    private Member findDiscordUserByMinecraftName(String name, List<Member> members) {
+        for (Member member : members) {
             for (String roleName : member.getRoles().stream().map(Role::getName).toList()) {
                 if (roleName.equalsIgnoreCase(name)) {
                     return member;
@@ -82,51 +104,16 @@ public class GuildData {
         return null;
     }
 
-    public void giveRoleToMember(Member member, Role role) {
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot give role to member.");
-            return;
-        }
-
-        guild.addRoleToMember(member, role).queue(
-                success -> {},
-                error -> LOGGER.error("Failed to give role {} to member {}: {}", role.getName(), member.getEffectiveName(), error.getMessage())
-        );
-    }
-
-    public void removeRoleFromMember(Member member, Role role) {
-        Guild guild = getGuild();
-        if (guild == null) {
-            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot remove role from member.");
-            return;
-        }
-
-        guild.removeRoleFromMember(member, role).queue(
-                success -> {},
-                error -> LOGGER.error("Failed to remove role {} from member {}: {}", role.getName(), member.getEffectiveName(), error.getMessage())
-        );
-    }
-
     private Guild getGuild() {
-        if (guild != null) {
-            return guild;
-        }
-
         if (guildId != null && !guildId.isBlank()) {
-            guild = jda.getGuildById(guildId);
-        } else {
-            List<Guild> guilds = jda.getGuilds();
-            if (guilds.isEmpty()) {
-                return null;
-            }
-
-            guild = guilds.getFirst();
+            return jda.getGuildById(guildId);
         }
-
-        if (guild == null) {
+        List<Guild> guilds = jda.getGuilds();
+        if (guilds.isEmpty()) {
             return null;
         }
+        Guild guild = guilds.getFirst();
+        guildId = guild.getId();
         return guild;
     }
 }

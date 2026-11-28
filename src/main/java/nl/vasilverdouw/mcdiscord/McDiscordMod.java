@@ -47,7 +47,7 @@ public class McDiscordMod {
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("refresh")
                         .executes(context -> {
-                            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+                            discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
                             return 1;
                         })));
     }
@@ -55,7 +55,7 @@ public class McDiscordMod {
     private void onServerStarted(ServerStartedEvent event) {
         LOGGER.info("McDiscord: Minecraft server started!");
         discordBot.start();
-        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
@@ -67,14 +67,14 @@ public class McDiscordMod {
         Player player = event.getEntity();
         LOGGER.info("McDiscord: Player joined the server: " + getPlayerName(player));
         onlinePlayers.playerLoggedIn(player);
-        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
     }
 
     private void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
         Player player = event.getEntity();
         LOGGER.info("McDiscord: Player left the server: " + getPlayerName(player));
         onlinePlayers.playerLoggedOut(player);
-        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayers());
+        discordBot.updatePlayersOnline(onlinePlayers.getOnlinePlayerNames());
     }
 
     private String getPlayerName(Player player) {
