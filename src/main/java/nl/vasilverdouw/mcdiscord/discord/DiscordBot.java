@@ -3,6 +3,7 @@ package nl.vasilverdouw.mcdiscord.discord;
 import com.mojang.logging.LogUtils;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
@@ -15,15 +16,25 @@ import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class DiscordBot {
-
     private static final Logger LOGGER = LogUtils.getLogger();
-    private final IConfig config;
-    private GuildData guildData;
+    private static final int ACTIVITY_LIMIT = 128;
 
+    private final IConfig config;
+    private volatile List<String> playerNames = List.of();
+    private volatile JDA readySession;
     private JDA jda;
+    private ScheduledExecutorService worker;
+    private List<String> lastSynced;
 
     public DiscordBot(IConfig config) {
         this.config = config;
@@ -31,7 +42,6 @@ public class DiscordBot {
 
     public void start() {
         String token = config.getBotToken();
-
         if (token == null || token.isBlank()) {
             LOGGER.error("Discord bot token is missing.");
             return;
@@ -45,81 +55,113 @@ public class DiscordBot {
                     .addEventListeners(new ListenerAdapter() {
                         @Override
                         public void onReady(ReadyEvent event) {
-                            LOGGER.info(
-                                    "Discord bot connected as {}",
-                                    event.getJDA().getSelfUser().getName()
-                            );
+                            readySession = event.getJDA();
                         }
                     })
                     .build();
-            guildData = new GuildData(jda, config);
+            worker = Executors.newSingleThreadScheduledExecutor(task -> {
+                Thread thread = new Thread(task, "McDiscord sync");
+                thread.setDaemon(true);
+                return thread;
+            });
+            worker.scheduleWithFixedDelay(() -> sync(false), 0, 1, TimeUnit.SECONDS);
+            worker.scheduleWithFixedDelay(() -> sync(true), 30, 30, TimeUnit.SECONDS);
         } catch (Exception e) {
             LOGGER.error("Failed to start Discord bot", e);
         }
     }
 
     public void stop() {
-        if (jda != null) {
-            showOnlinePlayersInActivity(new ArrayList<>());
-            giveOnlinePlayersRole(new ArrayList<>());
+        if (jda == null) {
+            return;
+        }
 
-
-            jda.shutdown();
-            jda = null;
-
-            LOGGER.info("Discord bot shutting down.");
+        try {
+            if (worker != null && readySession == jda) {
+                worker.submit(() -> reconcile(jda, List.of(), false)).get(5, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            LOGGER.warn("Could not finish clearing Discord Online roles before shutdown", e);
+        } finally {
+            if (worker != null) {
+                worker.shutdownNow();
+            }
+            jda.shutdownNow();
         }
     }
 
     public void updatePlayersOnline(List<ServerPlayer> onlinePlayers) {
-        if (jda == null) {
-            LOGGER.warn("Discord bot is not running. Cannot update online players.");
+        playerNames = new ArrayList<>(onlinePlayers.stream()
+                .map(player -> player.getGameProfile().getName()).toList());
+    }
+
+    private void sync(boolean force) {
+        JDA session = readySession;
+        List<String> snapshot = playerNames;
+        if (session == null || session.getStatus() != JDA.Status.CONNECTED) {
+            return;
+        }
+        if (!force && snapshot == lastSynced) {
             return;
         }
 
-        showOnlinePlayersInActivity(onlinePlayers);
-
-        giveOnlinePlayersRole(onlinePlayers);
+        // Retry a failed synchronization on the periodic pass, or as soon as the roster changes.
+        lastSynced = snapshot;
+        try {
+            reconcile(session, snapshot, true);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Could not synchronize Minecraft players with Discord", e);
+        }
     }
 
-    private void showOnlinePlayersInActivity(List<ServerPlayer> onlinePlayers) {
-        StringBuilder playerList = new StringBuilder("Online Players: " + onlinePlayers.size() + "\n\n");
-        for (ServerPlayer player : onlinePlayers) {
-            playerList.append("- ").append(player.getName().getString()).append("\n");
+    private void reconcile(JDA session, List<String> names, boolean updateActivity) {
+        if (updateActivity) {
+            session.getPresence().setActivity(Activity.playing(activityText(names)));
         }
 
-        jda.getPresence().setActivity(net.dv8tion.jda.api.entities.Activity.playing(playerList.toString()));
-    }
-
-    private void giveOnlinePlayersRole(List<ServerPlayer> onlinePlayers) {
-        Role onlineRole = guildData.ensureOnlineRole();
+        GuildData guildData = new GuildData(session, config);
+        Role onlineRole = guildData.ensureOnlineRole(updateActivity && !names.isEmpty());
         if (onlineRole == null) {
-            LOGGER.warn("Online role could not be ensured. Cannot give online players the role.");
             return;
         }
 
         guildData.updateGuildMembers();
-
-        // Create a list of Discord members that correspond to the online Minecraft players
-        List<Member> onlineMembers = new ArrayList<>();
-        for (ServerPlayer player : onlinePlayers) {
-            String playerName = player.getName().getString();
-            Member member = guildData.findDiscordUserByMinecraftName(playerName);
+        var onlineMembers = new HashSet<Member>();
+        for (String name : names) {
+            Member member = guildData.findDiscordUserByMinecraftName(name, onlineRole);
             if (member != null) {
                 onlineMembers.add(member);
-            } else {
-                LOGGER.warn("No Discord user found for Minecraft player: " + playerName);
             }
         }
 
-        // For each member in the guild, if they are in the onlineMembers list, give them the Online role.
-        // If they are not in the list, remove the Online role from them.
+        var changes = new ArrayList<CompletableFuture<Void>>();
         for (Member member : guildData.getGuildMembers()) {
-            if (onlineMembers.contains(member)) {
-                guildData.giveRoleToMember(member, onlineRole);
-            } else {
-                guildData.removeRoleFromMember(member, onlineRole);
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
+            boolean shouldHaveRole = onlineMembers.contains(member);
+            boolean hasRole = member.getRoles().contains(onlineRole);
+            if (shouldHaveRole != hasRole) {
+                try {
+                    changes.add(guildData.setOnlineRole(member, onlineRole, shouldHaveRole));
+                } catch (RuntimeException e) {
+                    LOGGER.warn("Could not submit Online role update for Discord member {}", member.getId(), e);
+                }
             }
         }
+        CompletableFuture.allOf(changes.toArray(CompletableFuture<?>[]::new)).join();
+    }
+
+    private String activityText(List<String> names) {
+        StringBuilder text = new StringBuilder("Online Players: ").append(names.size());
+        for (String name : names) {
+            if (text.length() + name.length() + 2 > ACTIVITY_LIMIT - 4) {
+                return text.append(" ...").toString();
+            }
+            text.append(", ").append(name);
+        }
+        return text.toString();
     }
 }
