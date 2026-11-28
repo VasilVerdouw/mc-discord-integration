@@ -114,17 +114,13 @@ public class DiscordBot {
         try {
             showOnlinePlayersInActivity(onlinePlayers);
             guildData.syncOnlineRole(onlinePlayers);
+            guildData.updateOnlineMessage(onlinePlayers);
         } catch (RuntimeException e) {
             LOGGER.warn("Failed to sync online players to Discord", e);
         }
     }
 
     private void showOnlinePlayersInActivity(List<String> onlinePlayers) {
-        StringBuilder playerList = new StringBuilder("Online Players: " + onlinePlayers.size() + "\n\n");
-        for (String player : onlinePlayers) {
-            playerList.append("- ").append(player).append("\n");
-        }
-
-        jda.getPresence().setActivity(net.dv8tion.jda.api.entities.Activity.playing(playerList.toString()));
+        jda.getPresence().setActivity(net.dv8tion.jda.api.entities.Activity.playing("Online Players: " + onlinePlayers.size()));
     }
 }

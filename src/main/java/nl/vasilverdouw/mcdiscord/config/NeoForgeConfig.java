@@ -6,6 +6,7 @@ public class NeoForgeConfig implements IConfig {
     private final ModConfigSpec spec;
     private final ModConfigSpec.ConfigValue<String> botToken;
     private final ModConfigSpec.ConfigValue<String> guildId;
+    private final ModConfigSpec.ConfigValue<String> onlineUpdatesChannelId;
 
     public NeoForgeConfig() {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -21,6 +22,13 @@ public class NeoForgeConfig implements IConfig {
                 "then right-click your server icon and choose Copy Server ID.",
                 "Restart the Minecraft server after changing this value.")
                 .define("DISCORD_GUILD_ID", "");
+        onlineUpdatesChannelId = builder.comment(
+                "Discord channel ID for online updates. Leave empty to disable online updates.",
+                "This will send a message with the current online players to the specified channel and keep it updated.",
+                "In Discord, enable User Settings > Advanced > Developer Mode,",
+                "then right-click your channel and choose Copy Channel ID.",
+                "Restart the Minecraft server after changing this value.")
+                .define("DISCORD_ONLINE_UPDATES_CHANNEL_ID", "");
         spec = builder.build();
     }
 
@@ -31,6 +39,11 @@ public class NeoForgeConfig implements IConfig {
     @Override
     public String getBotToken() {
         return botToken.get();
+    }
+
+    @Override
+    public String getOnlineUpdatesChannelId() {
+        return onlineUpdatesChannelId.get();
     }
 
     @Override

@@ -5,4 +5,6 @@ public interface IConfig {
 
     /** Returns the optional guild ID, or an empty string to use the first available guild. */
     String getGuildId();
+
+    String getOnlineUpdatesChannelId();
 }

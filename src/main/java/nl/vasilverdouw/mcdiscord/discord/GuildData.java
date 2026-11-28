@@ -21,6 +21,7 @@ public class GuildData {
 
     private final JDA jda;
     private String guildId;
+    private String onlineUpdatesChannelId;
 
     private Role previousOnlineRole;
     private Set<Long> previousOnlineMembers = Set.of();
@@ -28,6 +29,7 @@ public class GuildData {
     public GuildData(JDA jda, IConfig config) {
         this.jda = jda;
         guildId = config.getGuildId();
+        onlineUpdatesChannelId = config.getOnlineUpdatesChannelId();
     }
 
     public void syncOnlineRole(List<String> onlinePlayers) {
@@ -102,6 +104,53 @@ public class GuildData {
             }
         }
         return null;
+    }
+
+    public void updateOnlineMessage(List<String> onlinePlayers) {
+        if (onlineUpdatesChannelId == null || onlineUpdatesChannelId.isBlank()) {
+            return;
+        }
+
+        Guild guild = getGuild();
+        if (guild == null) {
+            LOGGER.warn("Discord bot is not in the specified (or any if none specified) guild. Cannot update online message.");
+            return;
+        }
+
+        var channel = guild.getTextChannelById(onlineUpdatesChannelId);
+        if (channel == null) {
+            LOGGER.warn("Online updates channel ID is not set or invalid. Cannot update online message.");
+            return;
+        }
+
+        var previousMessages = channel.getIterableHistory().stream()
+                .filter(message -> message.getAuthor().equals(jda.getSelfUser()))
+                .limit(1)
+                .toList();
+
+        StringBuilder playerList = new StringBuilder("# " + onlinePlayers.size() + " player(s) online\n");
+        for (String player : onlinePlayers) {
+            playerList.append("- ").append(player).append("\n");
+        }
+
+        if (!previousMessages.isEmpty()) {
+            var previousMessage = previousMessages.getFirst();
+            previousMessage.editMessage(playerList.toString())
+                    .timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .queue(
+                            success -> {
+                            },
+                            error -> LOGGER.warn("Failed to update online players message in Discord.", error)
+                    );
+        } else {
+            channel.sendMessage(playerList.toString())
+                    .timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .queue(
+                            success -> {
+                            },
+                            error -> LOGGER.warn("Failed to update online players message in Discord.", error)
+                    );
+        }
     }
 
     private Guild getGuild() {

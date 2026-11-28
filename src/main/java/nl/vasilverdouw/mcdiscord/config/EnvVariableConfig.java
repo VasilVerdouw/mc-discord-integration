@@ -10,4 +10,9 @@ public class EnvVariableConfig implements IConfig {
     public String getGuildId() {
         return System.getenv().getOrDefault("DISCORD_GUILD_ID", "");
     }
+
+    @Override
+    public String getOnlineUpdatesChannelId() {
+        return System.getenv().getOrDefault("DISCORD_ONLINE_UPDATES_CHANNEL_ID", "");
+    }
 }
