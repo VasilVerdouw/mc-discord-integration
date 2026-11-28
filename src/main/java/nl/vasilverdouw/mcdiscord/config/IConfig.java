@@ -1,5 +1,8 @@
-﻿package nl.vasilverdouw.mcdiscord.config;
+package nl.vasilverdouw.mcdiscord.config;
 
 public interface IConfig {
-    String getConfigValue(String key);
+    String getBotToken();
+
+    /** Returns the optional guild ID, or an empty string to use the first available guild. */
+    String getGuildId();
 }

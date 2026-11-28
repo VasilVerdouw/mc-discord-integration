@@ -12,14 +12,16 @@ A server-side mod for Minecraft 1.21.1 (NeoForge, Java 21) that shows who is pla
 2. Create a Discord bot in the Discord Developer Portal, enable **Server Members Intent**, and invite it to your Discord server with **Manage Roles** permission.
 3. Place the bot's role above the `Online` role in your Discord role list. The mod creates `Online` if it does not exist.
 4. For each player, create a Discord role named exactly after their Minecraft username and assign it to their Discord account. Matching is case-insensitive and uses these roles, rather than Discord usernames or nicknames.
-5. Set the environment variables below in the environment that launches your Minecraft server, then start or restart it.
+5. Start the Minecraft server once to generate `config/mcdiscord-common.toml`, then stop it, fill in the values below, and restart it.
 
-| Variable | Description |
+| Config key | Description |
 | --- | --- |
 | `DISCORD_BOT_TOKEN` | Required. Your bot's token; keep it private. |
 | `DISCORD_GUILD_ID` | Your Discord server ID. Optional; if omitted, the bot uses the first server it finds. Set this when the bot belongs to multiple servers. |
 
-Configuration uses environment variables; there is no mod configuration file. To copy a Discord server ID, enable Developer Mode in Discord and right-click the server.
+Both values default to empty strings. The generated TOML file includes comments explaining where to get them. Get the bot token from your application's **Bot** page in the [Discord Developer Portal](https://discord.com/developers/applications). To copy a Discord server ID, enable **User Settings > Advanced > Developer Mode** in Discord, then right-click the server icon and choose **Copy Server ID**.
+
+Configuration uses NeoForge's `ModConfigSpec` through the mod's `IConfig` interface. It is registered as `COMMON`, so it is stored in the server's `config` directory and is not synced to players. Environment variables are no longer used by the mod. Keep the config file private because it contains the bot token, and restart the server after editing it.
 
 ## Commands and troubleshooting
 

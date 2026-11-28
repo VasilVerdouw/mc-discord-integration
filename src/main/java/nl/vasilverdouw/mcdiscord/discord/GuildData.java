@@ -15,7 +15,6 @@ public class GuildData {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final JDA jda;
-    private final IConfig config;
     private final String guildId;
 
     private List<Member> guildMembers;
@@ -23,8 +22,7 @@ public class GuildData {
 
     public GuildData(JDA jda, IConfig config) {
         this.jda = jda;
-        this.config = config;
-        guildId = config.getConfigValue("DISCORD_GUILD_ID");
+        guildId = config.getGuildId();
     }
 
     public List<Member> getGuildMembers() {

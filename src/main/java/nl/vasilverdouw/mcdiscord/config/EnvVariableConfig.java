@@ -1,8 +1,13 @@
-﻿package nl.vasilverdouw.mcdiscord.config;
+package nl.vasilverdouw.mcdiscord.config;
 
 public class EnvVariableConfig implements IConfig {
     @Override
-    public String getConfigValue(String key) {
-        return System.getenv(key);
+    public String getBotToken() {
+        return System.getenv().getOrDefault("DISCORD_BOT_TOKEN", "");
+    }
+
+    @Override
+    public String getGuildId() {
+        return System.getenv().getOrDefault("DISCORD_GUILD_ID", "");
     }
 }

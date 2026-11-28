@@ -30,7 +30,7 @@ public class DiscordBot {
     }
 
     public void start() {
-        String token = config.getConfigValue("DISCORD_BOT_TOKEN");
+        String token = config.getBotToken();
 
         if (token == null || token.isBlank()) {
             LOGGER.error("Discord bot token is missing.");
@@ -60,6 +60,10 @@ public class DiscordBot {
 
     public void stop() {
         if (jda != null) {
+            showOnlinePlayersInActivity(new ArrayList<>());
+            giveOnlinePlayersRole(new ArrayList<>());
+
+
             jda.shutdown();
             jda = null;
 
