@@ -4,13 +4,17 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import nl.vasilverdouw.mcdiscord.config.NeoForgeConfig;
+import nl.vasilverdouw.mcdiscord.config.IConfig;
 import nl.vasilverdouw.mcdiscord.discord.DiscordBot;
 import nl.vasilverdouw.mcdiscord.minecraft.OnlinePlayers;
 import org.slf4j.Logger;
@@ -18,12 +22,18 @@ import org.slf4j.Logger;
 @Mod(value = McDiscordMod.MOD_ID, dist = Dist.DEDICATED_SERVER)
 public class McDiscordMod {
 
-    private final DiscordBot discordBot = new DiscordBot();
+    public final IConfig config;
+    private final DiscordBot discordBot;
     private final OnlinePlayers onlinePlayers = new OnlinePlayers();
     public static final String MOD_ID = "mcdiscord";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public McDiscordMod() {
+    public McDiscordMod(ModContainer container) {
+        NeoForgeConfig fileConfig = new NeoForgeConfig();
+        // COMMON configs are not synced to clients, keeping the bot token on the server.
+        container.registerConfig(ModConfig.Type.COMMON, fileConfig.getSpec());
+        config = fileConfig;
+        discordBot = new DiscordBot(config);
         LOGGER.info("McDiscord is initializing!");
 
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);

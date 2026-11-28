@@ -1,0 +1,5 @@
+root = true
+
+[*]
+# UTF-8 without a byte-order mark (BOM).
+charset = utf-8

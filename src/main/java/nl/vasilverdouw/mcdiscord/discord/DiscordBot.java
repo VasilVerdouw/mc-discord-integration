@@ -12,6 +12,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.ChunkingFilter;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.minecraft.server.level.ServerPlayer;
+import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -28,14 +29,19 @@ public class DiscordBot {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int ACTIVITY_LIMIT = 128;
 
+    private final IConfig config;
     private volatile List<String> playerNames = List.of();
     private volatile JDA readySession;
     private JDA jda;
     private ScheduledExecutorService worker;
     private List<String> lastSynced;
 
+    public DiscordBot(IConfig config) {
+        this.config = config;
+    }
+
     public void start() {
-        String token = System.getenv("DISCORD_BOT_TOKEN");
+        String token = config.getBotToken();
         if (token == null || token.isBlank()) {
             LOGGER.error("Discord bot token is missing.");
             return;
@@ -115,7 +121,7 @@ public class DiscordBot {
             session.getPresence().setActivity(Activity.playing(activityText(names)));
         }
 
-        GuildData guildData = new GuildData(session);
+        GuildData guildData = new GuildData(session, config);
         Role onlineRole = guildData.ensureOnlineRole(updateActivity && !names.isEmpty());
         if (onlineRole == null) {
             return;
