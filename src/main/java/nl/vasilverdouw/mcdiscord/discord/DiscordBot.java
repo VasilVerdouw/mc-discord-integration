@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,7 +28,7 @@ public class DiscordBot {
     private GuildData guildData;
 
     // Guarded by this object's monitor. No Discord work runs with this lock held.
-    private List<String> latestPlayers = List.of();
+    private OnlineStatus latestStatus = new OnlineStatus(List.of(), null);
     private boolean syncQueued;
 
     public DiscordBot(IConfig config) {
@@ -69,16 +70,17 @@ public class DiscordBot {
 
     public synchronized void stop() {
         if (!worker.isShutdown()) {
-            worker.execute(this::disconnect);
+            OnlineStatus offlineStatus = latestStatus.withPlayers(List.of());
+            worker.execute(() -> disconnect(offlineStatus));
             worker.shutdown();
         }
     }
 
-    private void disconnect() {
+    private void disconnect(OnlineStatus offlineStatus) {
         if (jda != null) {
             try {
                 if (jda.getStatus() == JDA.Status.CONNECTED) {
-                    sync(List.of());
+                    sync(offlineStatus);
                 }
             } finally {
                 jda.shutdown();
@@ -88,7 +90,7 @@ public class DiscordBot {
     }
 
     public synchronized void updatePlayersOnline(List<String> players) {
-        latestPlayers = List.copyOf(players);
+        latestStatus = latestStatus.withPlayers(List.copyOf(players));
         queueSync();
     }
 
@@ -98,23 +100,23 @@ public class DiscordBot {
         }
         syncQueued = true;
         worker.execute(() -> {
-            List<String> players = takeSnapshot();
+            OnlineStatus status = takeSnapshot();
             if (!worker.isShutdown() && jda != null && jda.getStatus() == JDA.Status.CONNECTED) {
-                sync(players);
+                sync(status);
             }
         });
     }
 
-    private synchronized List<String> takeSnapshot() {
+    private synchronized OnlineStatus takeSnapshot() {
         syncQueued = false;
-        return latestPlayers;
+        return latestStatus;
     }
 
-    private void sync(List<String> onlinePlayers) {
+    private void sync(OnlineStatus status) {
         try {
-            showOnlinePlayersInActivity(onlinePlayers);
-            guildData.syncOnlineRole(onlinePlayers);
-            guildData.updateOnlineMessage(onlinePlayers);
+            showOnlinePlayersInActivity(status.players());
+            guildData.syncOnlineRole(status.players());
+            guildData.updateOnlineMessage(status.players(), status.lastPlayerOnline());
         } catch (RuntimeException e) {
             LOGGER.warn("Failed to sync online players to Discord", e);
         }
@@ -122,5 +124,14 @@ public class DiscordBot {
 
     private void showOnlinePlayersInActivity(List<String> onlinePlayers) {
         jda.getPresence().setActivity(net.dv8tion.jda.api.entities.Activity.playing("Online Players: " + onlinePlayers.size()));
+    }
+
+    private record OnlineStatus(List<String> players, Instant lastPlayerOnline) {
+        private OnlineStatus withPlayers(List<String> updatedPlayers) {
+            if (!players.isEmpty() && updatedPlayers.isEmpty()) {
+                return new OnlineStatus(updatedPlayers, Instant.now());
+            }
+            return new OnlineStatus(updatedPlayers, lastPlayerOnline);
+        }
     }
 }

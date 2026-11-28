@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.entities.Role;
 import nl.vasilverdouw.mcdiscord.config.IConfig;
 import org.slf4j.Logger;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -106,7 +107,7 @@ public class GuildData {
         return null;
     }
 
-    public void updateOnlineMessage(List<String> onlinePlayers) {
+    public void updateOnlineMessage(List<String> onlinePlayers, Instant lastPlayerOnline) {
         if (onlineUpdatesChannelId == null || onlineUpdatesChannelId.isBlank()) {
             return;
         }
@@ -128,14 +129,11 @@ public class GuildData {
                 .limit(1)
                 .toList();
 
-        StringBuilder playerList = new StringBuilder("# " + onlinePlayers.size() + " player(s) online\n");
-        for (String player : onlinePlayers) {
-            playerList.append("- ").append(player).append("\n");
-        }
+        String content = formatOnlineMessage(onlinePlayers, lastPlayerOnline);
 
         if (!previousMessages.isEmpty()) {
             var previousMessage = previousMessages.getFirst();
-            previousMessage.editMessage(playerList.toString())
+            previousMessage.editMessage(content)
                     .timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .queue(
                             success -> {
@@ -143,7 +141,7 @@ public class GuildData {
                             error -> LOGGER.warn("Failed to update online players message in Discord.", error)
                     );
         } else {
-            channel.sendMessage(playerList.toString())
+            channel.sendMessage(content)
                     .timeout(ROLE_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .queue(
                             success -> {
@@ -151,6 +149,18 @@ public class GuildData {
                             error -> LOGGER.warn("Failed to update online players message in Discord.", error)
                     );
         }
+    }
+
+    private String formatOnlineMessage(List<String> onlinePlayers, Instant lastPlayerOnline) {
+        if (onlinePlayers.isEmpty() && lastPlayerOnline != null) {
+            return "# 0 player(s) online\nLast player online <t:" + lastPlayerOnline.getEpochSecond() + ":R>";
+        }
+
+        StringBuilder playerList = new StringBuilder("# " + onlinePlayers.size() + " player(s) online\n");
+        for (String player : onlinePlayers) {
+            playerList.append("- ").append(player).append("\n");
+        }
+        return playerList.toString();
     }
 
     private Guild getGuild() {
